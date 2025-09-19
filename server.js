@@ -1,104 +1,64 @@
 const express = require("express");
-const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
+const multer = require("multer");
 const { spawn } = require("child_process");
 const http = require("http");
-const socketIo = require("socket.io");
+const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+const io = new Server(server);
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "public")));
 
-const upload = multer({ dest: "uploads/" });
-const DATA_FILE = path.join(__dirname, "data/bots.json");
+const UPLOAD_DIR = path.join(__dirname, "uploads");
 
-// ensure bots.json exists
-if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
-
-function loadBots() {
-  return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+// create uploads folder if not exists
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  console.log("uploads/ folder created!");
 }
 
-function saveBots(bots) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(bots, null, 2));
-}
+// multer setup
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => cb(null, file.originalname)
+});
+const upload = multer({ storage });
 
-let processes = {};
-
-// upload bot file
-app.post("/upload", upload.single("botfile"), (req, res) => {
-  if (!req.file) return res.status(400).send("No file uploaded");
-
-  const bots = loadBots();
-  bots.push({
-    name: req.file.originalname,
-    path: req.file.path,
-    status: "stopped"
-  });
-  saveBots(bots);
-
-  res.json({ success: true, msg: "Bot uploaded successfully" });
+// routes
+app.post("/upload", upload.single("file"), (req, res) => {
+  if (!req.file) return res.status(400).send("No file uploaded.");
+  res.json({ success: true, filename: req.file.filename });
 });
 
-// get all bots
-app.get("/bots", (req, res) => {
-  res.json(loadBots());
-});
+// run bot
+app.post("/run", (req, res) => {
+  const { filename } = req.body;
+  if (!filename) return res.status(400).send("filename required");
+  const filePath = path.join(UPLOAD_DIR, filename);
+  if (!fs.existsSync(filePath)) return res.status(404).send("File not found");
 
-// start bot
-app.post("/start/:name", (req, res) => {
-  const { name } = req.params;
-  const bots = loadBots();
-  const bot = bots.find(b => b.name === name);
+  const child = spawn("node", [filePath]);
 
-  if (!bot) return res.status(404).json({ error: "Bot not found" });
-  if (processes[name]) return res.json({ error: "Already running" });
-
-  const proc = spawn("node", [bot.path]);
-
-  processes[name] = proc;
-  bot.status = "running";
-  saveBots(bots);
-
-  proc.stdout.on("data", data => {
-    io.emit("console", { bot: name, log: data.toString() });
+  child.stdout.on("data", data => {
+    io.emit("console", data.toString());
   });
 
-  proc.stderr.on("data", data => {
-    io.emit("console", { bot: name, log: "ERROR: " + data.toString() });
+  child.stderr.on("data", data => {
+    io.emit("console", data.toString());
   });
 
-  proc.on("close", code => {
-    io.emit("console", { bot: name, log: `Bot stopped with code ${code}` });
-    delete processes[name];
-    bot.status = "stopped";
-    saveBots(bots);
+  child.on("close", code => {
+    io.emit("console", `Process exited with code ${code}`);
   });
 
-  res.json({ success: true, msg: `${name} started` });
+  res.json({ success: true, message: `Running ${filename}` });
 });
 
-// stop bot
-app.post("/stop/:name", (req, res) => {
-  const { name } = req.params;
-  if (!processes[name]) return res.json({ error: "Not running" });
-
-  processes[name].kill();
-  delete processes[name];
-
-  const bots = loadBots();
-  const bot = bots.find(b => b.name === name);
-  if (bot) {
-    bot.status = "stopped";
-    saveBots(bots);
-  }
-
-  res.json({ success: true, msg: `${name} stopped` });
-});
-
+// server
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`VPS Panel running on http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
