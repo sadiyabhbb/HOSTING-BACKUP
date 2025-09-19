@@ -1,7 +1,7 @@
 {
-  "name": "mini-vps-server",
+  "name": "vercel-server",
   "version": "1.0.0",
-  "description": "Node.js bot server with file management API",
+  "description": "Node.js bot server for Vercel",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
