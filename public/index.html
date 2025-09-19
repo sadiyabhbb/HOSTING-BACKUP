@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mini VPS Panel</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>🚀 Mini VPS Panel</h1>
+
+  <h2>Upload Bot</h2>
+  <form id="uploadForm">
+    <input type="file" name="botfile" required>
+    <button type="submit">Upload</button>
+  </form>
+
+  <h2>Available Bots</h2>
+  <ul id="botList"></ul>
+
+  <h2>Console</h2>
+  <pre id="console"></pre>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
